@@ -5,12 +5,13 @@ import {
   EdgeProps,
   getBezierPath,
 } from '@xyflow/react';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import useGraphStore from '../../store';
 
 import { useFetchAgent } from '@/hooks/use-agent-request';
 import { cn } from '@/lib/utils';
-import { useMemo } from 'react';
+import { isEmpty } from 'lodash';
+import { PointerEvent as ReactPointerEvent } from 'react';
 import { NodeHandleId, Operator } from '../../constant';
 
 function InnerButtonEdge({
@@ -29,7 +30,10 @@ function InnerButtonEdge({
   data,
   sourceHandleId,
 }: EdgeProps<Edge<{ isHovered: boolean }>>) {
-  const deleteEdgeById = useGraphStore((state) => state.deleteEdgeById);
+  const { deleteEdgeById, getOperatorTypeFromId } = useGraphStore(
+    (state) => state,
+  );
+
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -39,86 +43,105 @@ function InnerButtonEdge({
     targetPosition,
   });
   const selectedStyle = useMemo(() => {
-    return selected ? { strokeWidth: 1, stroke: 'rgba(76, 164, 231, 1)' } : {};
+    return selected
+      ? { strokeWidth: 1, stroke: 'rgb(var(--accent-primary))' }
+      : {};
   }, [selected]);
 
-  const onEdgeClick = () => {
+  const isTargetPlaceholder = useMemo(() => {
+    return getOperatorTypeFromId(target) === Operator.Placeholder;
+  }, [getOperatorTypeFromId, target]);
+
+  const placeholderHighlightStyle = useMemo(() => {
+    const isHighlighted = isTargetPlaceholder;
+    return isHighlighted
+      ? { strokeWidth: 2, stroke: 'rgb(var(--accent-primary))' }
+      : {};
+  }, [isTargetPlaceholder]);
+
+  const onEdgeClick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    // pointerdown: React Flow may swallow click inside group nodes.
+    event.stopPropagation();
+    event.preventDefault();
     deleteEdgeById(id);
   };
 
   // highlight the nodes that the workflow passes through
   const { data: flowDetail } = useFetchAgent();
 
-  const graphPath = useMemo(() => {
-    // TODO: this will be called multiple times
+  const showHighlight = useMemo(() => {
     const path = flowDetail?.dsl?.path ?? [];
-    // The second to last
-    const previousGraphPath: string[] = path.at(-2) ?? [];
-    let graphPath: string[] = path.at(-1) ?? [];
-    // The last of the second to last article
-    const previousLatestElement = previousGraphPath.at(-1);
-    if (previousGraphPath.length > 0 && previousLatestElement) {
-      graphPath = [previousLatestElement, ...graphPath];
-    }
-    return Array.isArray(graphPath) ? graphPath : [];
-  }, [flowDetail.dsl?.path]);
-
-  const highlightStyle = useMemo(() => {
-    const idx = graphPath.findIndex((x) => x === source);
+    const idx = path.findIndex((x) => x === target);
     if (idx !== -1) {
-      // The set of elements following source
-      const slicedGraphPath = graphPath.slice(idx + 1);
-      if (slicedGraphPath.some((x) => x === target)) {
-        return { strokeWidth: 1, stroke: 'red' };
+      let index = idx - 1;
+      while (index >= 0) {
+        if (path[index] === source) {
+          return { strokeWidth: 1, stroke: 'rgb(var(--accent-primary))' };
+        }
+        index--;
       }
+      return {};
     }
     return {};
-  }, [source, target, graphPath]);
+  }, [flowDetail?.dsl?.path, source, target]);
 
-  const visible = useMemo(() => {
+  const showDelete = useMemo(() => {
     return (
-      data?.isHovered &&
+      (selected || data?.isHovered) &&
       sourceHandleId !== NodeHandleId.Tool &&
-      sourceHandleId !== NodeHandleId.AgentBottom && // The connection between the agent node and the tool node does not need to display the delete button
-      !target.startsWith(Operator.Tool)
+      sourceHandleId !== NodeHandleId.AgentBottom &&
+      !target.startsWith(Operator.Tool) &&
+      !isTargetPlaceholder
     );
-  }, [data?.isHovered, sourceHandleId, target]);
+  }, [
+    data?.isHovered,
+    isTargetPlaceholder,
+    selected,
+    sourceHandleId,
+    target,
+  ]);
+
+  const activeMarkerEnd =
+    selected || !isEmpty(showHighlight) || isTargetPlaceholder
+      ? 'url(#selected-marker)'
+      : markerEnd;
 
   return (
     <>
       <BaseEdge
         path={edgePath}
-        markerEnd={markerEnd}
-        style={{ ...style, ...selectedStyle, ...highlightStyle }}
-        className="text-text-secondary"
+        markerEnd={activeMarkerEnd}
+        style={{
+          ...style,
+          ...selectedStyle,
+          ...showHighlight,
+          ...placeholderHighlightStyle,
+        }}
+        className={cn('text-text-disabled')}
       />
 
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            fontSize: 12,
-            // everything inside EdgeLabelRenderer has no pointer events by default
-            // if you have an interactive element, set pointer-events: all
-            pointerEvents: 'all',
-            zIndex: 1001, // https://github.com/xyflow/xyflow/discussions/3498
-          }}
-          className="nodrag nopan"
-        >
-          <button
-            className={cn(
-              'size-3.5 border border-state-error text-state-error rounded-full leading-none',
-              'invisible',
-              { visible },
-            )}
-            type="button"
-            onClick={onEdgeClick}
+      {showDelete ? (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              fontSize: 12,
+              pointerEvents: 'auto',
+              zIndex: 1002,
+            }}
+            className="nodrag nopan"
           >
-            ×
-          </button>
-        </div>
-      </EdgeLabelRenderer>
+            <button
+              className="size-5 border border-state-error text-state-error rounded-full leading-none bg-bg-canvas outline outline-bg-canvas"
+              type="button"
+              onPointerDown={onEdgeClick}
+            >
+              ×
+            </button>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
     </>
   );
 }

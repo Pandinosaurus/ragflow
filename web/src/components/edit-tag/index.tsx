@@ -1,22 +1,40 @@
+/*
+ *  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 import { PlusOutlined } from '@ant-design/icons';
-import { TweenOneGroup } from 'rc-tween-one';
 import React, { useEffect, useRef, useState } from 'react';
 
-import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '../ui/hover-card';
 import { Input } from '../ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 interface EditTagsProps {
   value?: string[];
   onChange?: (tags: string[]) => void;
+  disabled?: boolean;
+  addButtonTestId?: string;
+  inputTestId?: string;
 }
 
 const EditTag = React.forwardRef<HTMLDivElement, EditTagsProps>(
-  ({ value = [], onChange }: EditTagsProps, ref) => {
+  function EditTag(
+    { value = [], onChange, disabled, addButtonTestId, inputTestId },
+    ref,
+  ) {
     const [inputVisible, setInputVisible] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -54,80 +72,77 @@ const EditTag = React.forwardRef<HTMLDivElement, EditTagsProps>(
 
     const forMap = (tag: string) => {
       return (
-        <HoverCard key={tag}>
-          <HoverCardContent side="top">{tag}</HoverCardContent>
-          <HoverCardTrigger asChild>
-            <div className="w-fit flex items-center justify-center gap-2 border-dashed border px-1 rounded-sm bg-bg-card">
+        <Tooltip key={tag}>
+          <TooltipContent side="top">{tag}</TooltipContent>
+          <TooltipTrigger asChild>
+            <div
+              className={cn(
+                'w-fit h-8 flex items-center justify-center gap-2 border border-border-button rounded-sm bg-bg-card',
+                disabled ? 'px-2' : 'ps-2 pe-1',
+              )}
+            >
               <div className="flex gap-2 items-center">
-                <div className="max-w-80 overflow-hidden text-ellipsis">
+                <div className="max-w-80 whitespace-nowrap overflow-hidden text-ellipsis">
                   {tag}
                 </div>
-                <X
-                  className="w-4 h-4 text-muted-foreground hover:text-primary"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleClose(tag);
-                  }}
-                />
+                {!disabled && (
+                  <Button
+                    variant="delete"
+                    size="icon-xs"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleClose(tag);
+                    }}
+                  >
+                    <Trash2 className="size-[1em]" />
+                  </Button>
+                )}
               </div>
             </div>
-          </HoverCardTrigger>
-        </HoverCard>
+          </TooltipTrigger>
+        </Tooltip>
       );
     };
 
     const tagChild = value?.map(forMap);
 
-    const tagPlusStyle: React.CSSProperties = {
-      borderStyle: 'dashed',
-    };
-
     return (
-      <div>
-        {inputVisible ? (
+      <div ref={ref}>
+        {inputVisible && (
           <Input
             ref={inputRef}
             type="text"
-            className="h-8 bg-bg-card"
+            className="h-8 bg-bg-card mb-1"
             value={inputValue}
             onChange={handleInputChange}
             onBlur={handleInputConfirm}
+            disabled={disabled}
+            data-testid={inputTestId}
             onKeyDown={(e) => {
-              if (e?.key === 'Enter') {
+              // Ignore the Enter that confirms an IME (e.g. Chinese/Japanese)
+              // composition, otherwise the half-composed text is committed as a
+              // tag and the input closes before the user finishes typing.
+              if (e?.key === 'Enter' && !e.nativeEvent.isComposing) {
                 handleInputConfirm();
               }
             }}
           />
-        ) : (
-          <Button
-            variant="dashed"
-            className="w-fit flex items-center justify-center gap-2 bg-bg-card"
-            onClick={showInput}
-            style={tagPlusStyle}
-          >
-            <PlusOutlined />
-          </Button>
         )}
-        {Array.isArray(tagChild) && tagChild.length > 0 && (
-          <TweenOneGroup
-            className="flex gap-2 flex-wrap mt-2"
-            enter={{
-              scale: 0.8,
-              opacity: 0,
-              type: 'from',
-              duration: 100,
-            }}
-            onEnd={(e) => {
-              if (e.type === 'appear' || e.type === 'enter') {
-                (e.target as any).style = 'display: inline-block';
-              }
-            }}
-            leave={{ opacity: 0, width: 0, scale: 0, duration: 200 }}
-            appear={false}
-          >
-            {tagChild}
-          </TweenOneGroup>
-        )}
+        <div className="flex gap-2 py-1 flex-wrap">
+          {Array.isArray(tagChild) && tagChild.length > 0 && <>{tagChild}</>}
+
+          {!inputVisible && !disabled && (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={showInput}
+              disabled={disabled}
+              data-testid={addButtonTestId}
+            >
+              <PlusOutlined />
+            </Button>
+          )}
+        </div>
       </div>
     );
   },

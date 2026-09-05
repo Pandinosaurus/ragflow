@@ -8,7 +8,6 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
@@ -32,7 +31,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
-import { useGetVariableLabelByValue } from '../../hooks/use-get-begin-query';
+import { useGetVariableLabelOrTypeByValue } from '../../hooks/use-get-begin-query';
 import { VariableFormSchemaType } from './schema';
 
 interface IProps {
@@ -49,7 +48,7 @@ export function VariableTable({
   nodeId,
 }: IProps) {
   const { t } = useTranslation();
-  const getLabel = useGetVariableLabelByValue(nodeId!);
+  const { getLabel } = useGetVariableLabelOrTypeByValue({ nodeId: nodeId! });
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -135,7 +134,6 @@ export function VariableTable({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,

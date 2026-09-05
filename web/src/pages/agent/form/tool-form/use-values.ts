@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import { Operator } from '../../constant';
 import { useAgentToolInitialValues } from '../../hooks/use-agent-tool-initial-values';
 import useGraphStore from '../../store';
-import { getAgentNodeTools } from '../../utils';
 
 export enum SearchDepth {
   Basic = 'basic',
@@ -16,34 +15,46 @@ export enum Topic {
 }
 
 export function useValues() {
-  const { clickedToolId, clickedNodeId, findUpstreamNodeById } = useGraphStore(
-    (state) => state,
-  );
+  const {
+    clickedToolId,
+    clickedNodeId,
+    findUpstreamNodeById,
+    getAgentToolById,
+  } = useGraphStore();
+
   const { initializeAgentToolValues } = useAgentToolInitialValues();
 
-  const values = useMemo(() => {
+  const values = useMemo<Record<string, any>>(() => {
     const agentNode = findUpstreamNodeById(clickedNodeId);
-    const tools = getAgentNodeTools(agentNode);
-
-    const formData = tools.find(
-      (x) => x.component_name === clickedToolId,
-    )?.params;
+    const tool = getAgentToolById(clickedToolId, agentNode!);
+    const formData = tool?.params;
 
     if (isEmpty(formData)) {
       const defaultValues = initializeAgentToolValues(
-        clickedNodeId as Operator,
+        (tool?.component_name || clickedNodeId) as Operator,
       );
 
       return defaultValues;
     }
 
-    return {
-      ...formData,
-    };
+    // DSLs predating the canonical `dataset_ids` field key retrieval
+    // bindings under the legacy `kb_ids` key. Fold it into the canonical
+    // field so the edited tool persists `dataset_ids` and save/run
+    // validation can see the binding.
+    const legacyDatasetIds = Array.isArray(formData?.dataset_ids)
+      ? undefined
+      : Array.isArray(formData?.kb_ids)
+        ? formData.kb_ids
+        : undefined;
+
+    return legacyDatasetIds
+      ? { ...formData, dataset_ids: legacyDatasetIds }
+      : { ...formData };
   }, [
     clickedNodeId,
     clickedToolId,
     findUpstreamNodeById,
+    getAgentToolById,
     initializeAgentToolValues,
   ]);
 

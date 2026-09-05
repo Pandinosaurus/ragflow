@@ -19,7 +19,8 @@ import time
 from abc import ABC
 import requests
 from agent.tools.base import ToolMeta, ToolParamBase, ToolBase
-from api.utils.api_utils import timeout
+from common.connection_utils import timeout
+from common.ssrf_guard import assert_url_is_safe, pin_dns
 
 
 class SearXNGParam(ToolParamBase):
@@ -36,15 +37,15 @@ class SearXNGParam(ToolParamBase):
                     "type": "string",
                     "description": "The search keywords to execute with SearXNG. The keywords should be the most important words/terms(includes synonyms) from the original request.",
                     "default": "{sys.query}",
-                    "required": True
+                    "required": True,
                 },
                 "searxng_url": {
                     "type": "string",
                     "description": "The base URL of your SearXNG instance (e.g., http://localhost:4000). This is required to connect to your SearXNG server.",
                     "required": False,
-                    "default": ""
-                }
-            }
+                    "default": "",
+                },
+            },
         }
         super().__init__()
         self.top_n = 10
@@ -61,84 +62,80 @@ class SearXNGParam(ToolParamBase):
         self.check_positive_integer(self.top_n, "Top N")
 
     def get_input_form(self) -> dict[str, dict]:
-        return {
-            "query": {
-                "name": "Query",
-                "type": "line"
-            },
-            "searxng_url": {
-                "name": "SearXNG URL",
-                "type": "line",
-                "placeholder": "http://localhost:4000"
-            }
-        }
+        return {"query": {"name": "Query", "type": "line"}, "searxng_url": {"name": "SearXNG URL", "type": "line", "placeholder": "http://localhost:4000"}}
 
 
 class SearXNG(ToolBase, ABC):
     component_name = "SearXNG"
 
-    @timeout(os.environ.get("COMPONENT_EXEC_TIMEOUT", 12))
+    @timeout(int(os.environ.get("COMPONENT_EXEC_TIMEOUT", 12)))
     def _invoke(self, **kwargs):
+        if self.check_if_canceled("SearXNG processing"):
+            return
+
         # Gracefully handle try-run without inputs
         query = kwargs.get("query")
         if not query or not isinstance(query, str) or not query.strip():
             self.set_output("formalized_content", "")
             return ""
 
-        searxng_url = (kwargs.get("searxng_url") or getattr(self._param, "searxng_url", "") or "").strip()
+        searxng_url = (getattr(self._param, "searxng_url", "") or kwargs.get("searxng_url") or "").strip()
         # In try-run, if no URL configured, just return empty instead of raising
         if not searxng_url:
             self.set_output("formalized_content", "")
             return ""
 
-        last_e = ""
-        for _ in range(self._param.max_retries+1):
-            try:
-                # 构建搜索参数
-                search_params = {
-                    'q': query,
-                    'format': 'json',
-                    'categories': 'general',
-                    'language': 'auto',
-                    'safesearch': 1,
-                    'pageno': 1
-                }
+        try:
+            _ssrf_hostname, _ssrf_ip = assert_url_is_safe(searxng_url)
+        except ValueError as e:
+            self.set_output("_ERROR", str(e))
+            return f"SearXNG error: SSRF guard blocked {searxng_url!r}: {e}"
 
-                # 发送搜索请求
-                response = requests.get(
-                    f"{searxng_url}/search",
-                    params=search_params,
-                    timeout=10
-                )
+        last_e = ""
+        for _ in range(self._param.max_retries + 1):
+            if self.check_if_canceled("SearXNG processing"):
+                return
+
+            try:
+                search_params = {"q": query, "format": "json", "categories": "general", "language": "auto", "safesearch": 1, "pageno": 1}
+
+                with pin_dns(_ssrf_hostname, _ssrf_ip):
+                    response = requests.get(f"{searxng_url}/search", params=search_params, timeout=10)
                 response.raise_for_status()
-                
+
+                if self.check_if_canceled("SearXNG processing"):
+                    return
+
                 data = response.json()
-                
-                # 验证响应数据
+
                 if not data or not isinstance(data, dict):
                     raise ValueError("Invalid response from SearXNG")
-                
+
                 results = data.get("results", [])
                 if not isinstance(results, list):
                     raise ValueError("Invalid results format from SearXNG")
-                
-                # 限制结果数量
-                results = results[:self._param.top_n]
-                
-                # 处理搜索结果
-                self._retrieve_chunks(results,
-                                      get_title=lambda r: r.get("title", ""),
-                                      get_url=lambda r: r.get("url", ""),
-                                      get_content=lambda r: r.get("content", ""))
-                
+
+                results = results[: self._param.top_n]
+
+                if self.check_if_canceled("SearXNG processing"):
+                    return
+
+                self._retrieve_chunks(results, get_title=lambda r: r.get("title", ""), get_url=lambda r: r.get("url", ""), get_content=lambda r: r.get("content", ""))
+
                 self.set_output("json", results)
                 return self.output("formalized_content")
 
             except requests.RequestException as e:
+                if self.check_if_canceled("SearXNG processing"):
+                    return
+
                 last_e = f"Network error: {e}"
                 logging.exception(f"SearXNG network error: {e}")
                 time.sleep(self._param.delay_after_error)
             except Exception as e:
+                if self.check_if_canceled("SearXNG processing"):
+                    return
+
                 last_e = str(e)
                 logging.exception(f"SearXNG error: {e}")
                 time.sleep(self._param.delay_after_error)
@@ -151,6 +148,6 @@ class SearXNG(ToolBase, ABC):
 
     def thoughts(self) -> str:
         return """
-Keywords: {} 
+Keywords: {}
 Searching with SearXNG for relevant results...
                 """.format(self.get_input().get("query", "-_-!"))

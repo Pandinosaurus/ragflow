@@ -1,6 +1,24 @@
+/*
+ *  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+import { cn } from '@/lib/utils';
 import { forwardRef } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { DelimiterPreview } from './delimiter-preview';
 import {
   FormControl,
   FormField,
@@ -16,11 +34,20 @@ interface IProps {
 }
 
 export const DelimiterInput = forwardRef<HTMLInputElement, InputProps & IProps>(
-  ({ value, onChange, maxLength, defaultValue }, ref) => {
-    const nextValue = value?.replaceAll('\n', '\\n');
+  function DelimiterInput(
+    { value, onChange, maxLength, defaultValue, ...props },
+    ref,
+  ) {
+    const nextValue = value
+      ?.replaceAll('\n', '\\n')
+      .replaceAll('\t', '\\t')
+      .replaceAll('\r', '\\r');
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
-      const nextValue = val.replaceAll('\\n', '\n');
+      const nextValue = val
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\t', '\t')
+        .replaceAll('\\r', '\r');
       onChange?.(nextValue);
     };
     return (
@@ -30,6 +57,8 @@ export const DelimiterInput = forwardRef<HTMLInputElement, InputProps & IProps>(
         maxLength={maxLength}
         defaultValue={defaultValue}
         ref={ref}
+        className={cn('bg-bg-base', props.className)}
+        {...props}
       ></Input>
     );
   },
@@ -50,10 +79,11 @@ export function DelimiterFormField() {
         }
         return (
           <FormItem className=" items-center space-y-0 ">
-            <div className="flex items-center gap-1">
+            <div className="flex items-start gap-1 pr-[1px]">
               <FormLabel
+                required
                 tooltip={t('knowledgeDetails.delimiterTip')}
-                className="text-sm text-muted-foreground whitespace-break-spaces w-1/4"
+                className="text-sm text-text-secondary whitespace-break-spaces w-1/4"
               >
                 {t('knowledgeDetails.delimiter')}
               </FormLabel>
@@ -61,6 +91,7 @@ export function DelimiterFormField() {
                 <FormControl>
                   <DelimiterInput {...field}></DelimiterInput>
                 </FormControl>
+                <DelimiterPreview value={field.value} />
               </div>
             </div>
             <div className="flex pt-1">

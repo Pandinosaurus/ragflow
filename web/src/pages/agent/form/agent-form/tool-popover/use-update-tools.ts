@@ -16,32 +16,43 @@ export function useGetNodeTools() {
 }
 
 export function useUpdateAgentNodeTools() {
-  const { updateNodeForm } = useGraphStore((state) => state);
-  const node = useContext(AgentFormContext);
+  const { generateAgentToolId, updateNodeForm } = useGraphStore(
+    (state) => state,
+  );
+  const node = useContext(AgentFormContext)!;
   const tools = useGetNodeTools();
   const { initializeAgentToolValues } = useAgentToolInitialValues();
 
   const updateNodeTools = useCallback(
-    (value: string[]) => {
-      if (node?.id) {
-        const nextValue = value.reduce<IAgentForm['tools']>((pre, cur) => {
-          const tool = tools.find((x) => x.component_name === cur);
-          pre.push(
-            tool
-              ? tool
-              : {
-                  component_name: cur,
-                  name: cur,
-                  params: initializeAgentToolValues(cur as Operator),
-                },
-          );
-          return pre;
-        }, []);
+    (value: string) => {
+      if (!node?.id) return;
 
-        updateNodeForm(node?.id, nextValue, ['tools']);
-      }
+      // Toggle — every tool (Retrieval included) is single-instance: the
+      // same tool can never be added to one Agent node twice. Selecting an
+      // already-added tool removes it.
+      updateNodeForm(
+        node.id,
+        tools.some((x) => x.component_name === value)
+          ? tools.filter((x) => x.component_name !== value)
+          : [
+              ...tools,
+              {
+                component_name: value,
+                name: value,
+                params: initializeAgentToolValues(value as Operator),
+                id: generateAgentToolId(value),
+              },
+            ],
+        ['tools'],
+      );
     },
-    [initializeAgentToolValues, node?.id, tools, updateNodeForm],
+    [
+      generateAgentToolId,
+      initializeAgentToolValues,
+      node?.id,
+      tools,
+      updateNodeForm,
+    ],
   );
 
   return { updateNodeTools };
@@ -53,8 +64,9 @@ export function useDeleteAgentNodeTools() {
   const node = useContext(AgentFormContext);
 
   const deleteNodeTool = useCallback(
-    (value: string) => () => {
-      const nextTools = tools.filter((x) => x.component_name !== value);
+    (toolId: string) => () => {
+      const nextTools = tools.filter((x) => x.id !== toolId);
+
       if (node?.id) {
         updateNodeForm(node?.id, nextTools, ['tools']);
       }

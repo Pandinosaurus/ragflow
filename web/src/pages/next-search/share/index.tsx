@@ -1,15 +1,31 @@
+/*
+ *  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
-import i18n from '@/locales/config';
+import i18n, { changeLanguageAsync } from '@/locales/config';
 import { useEffect, useState } from 'react';
 import {
   ISearchAppDetailProps,
   useFetchSearchDetail,
 } from '../../next-searches/hooks';
-import { useGetSharedSearchParams, useSearching } from '../hooks';
+import { useCheckSettings, useGetSharedSearchParams } from '../hooks';
 import '../index.less';
 import SearchHome from '../search-home';
 import SearchingPage from '../searching';
-export default function ShareSeachPage() {
+export default function ShareSearchPage() {
   const { tenantId, locale, visibleAvatar } = useGetSharedSearchParams();
   const {
     data: searchData = {
@@ -18,13 +34,13 @@ export default function ShareSeachPage() {
   } = useFetchSearchDetail(tenantId as string);
   const [isSearching, setIsSearching] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const searchingParam = useSearching({
-    data: searchData,
-  });
+  const { openSetting: canSearch } = useCheckSettings(
+    searchData as ISearchAppDetailProps,
+  );
 
   useEffect(() => {
     if (locale && i18n.language !== locale) {
-      i18n.changeLanguage(locale);
+      changeLanguageAsync(locale, { persist: false });
     }
   }, [locale]);
   return (
@@ -47,6 +63,8 @@ export default function ShareSeachPage() {
             isSearching={isSearching}
             searchText={searchText}
             setSearchText={setSearchText}
+            canSearch={!canSearch}
+            showEmbedLogo={false}
           />
         </div>
       )}
@@ -57,6 +75,7 @@ export default function ShareSeachPage() {
             searchText={searchText}
             setSearchText={setSearchText}
             data={searchData as ISearchAppDetailProps}
+            showEmbedLogo={false}
           />
         </div>
       )}

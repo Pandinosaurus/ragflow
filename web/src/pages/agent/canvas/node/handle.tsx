@@ -1,11 +1,14 @@
 import { useSetModalState } from '@/hooks/common-hooks';
 import { cn } from '@/lib/utils';
-import { Handle, HandleProps } from '@xyflow/react';
-import { Plus } from 'lucide-react';
-import { useMemo } from 'react';
+import { Handle, HandleProps, Position } from '@xyflow/react';
+import { Plus, ChevronDown } from 'lucide-react';
+import { useMemo, type MouseEvent } from 'react';
+import { NodeHandleId } from '../../constant';
 import { HandleContext } from '../../context';
+import { useIsPipeline } from '../../hooks/use-is-pipeline';
+import useGraphStore from '../../store';
 import { useDropdownManager } from '../context';
-import { InnerNextStepDropdown } from './dropdown/next-step-dropdown';
+import { NextStepDropdown } from './dropdown/next-step-dropdown';
 
 export function CommonHandle({
   className,
@@ -13,9 +16,22 @@ export function CommonHandle({
   ...props
 }: HandleProps & { nodeId: string }) {
   const { visible, hideModal, showModal } = useSetModalState();
-
   const { canShowDropdown, setActiveDropdown, clearActiveDropdown } =
     useDropdownManager();
+  const { hasDownstreamNode, hasUpstreamNode } = useGraphStore(
+    (state) => state,
+  );
+  const isPipeline = useIsPipeline();
+
+  let isConnectable = true;
+
+  if (isPipeline) {
+    if (props.type === 'source') {
+      isConnectable = !hasDownstreamNode(nodeId);
+    } else if (props.type === 'target') {
+      isConnectable = !hasUpstreamNode(nodeId);
+    }
+  }
 
   const value = useMemo(
     () => ({
@@ -32,12 +48,17 @@ export function CommonHandle({
     <HandleContext.Provider value={value}>
       <Handle
         {...props}
+        isConnectable={isConnectable}
         className={cn(
-          'inline-flex justify-center items-center !bg-accent-primary !size-4 !rounded-sm !border-none ',
+          'inline-flex justify-center items-center !bg-accent-primary !border-none group-hover:!size-4 group-hover:!rounded-sm',
           className,
         )}
         onClick={(e) => {
           e.stopPropagation();
+
+          if (!isConnectable) {
+            return;
+          }
 
           if (!canShowDropdown()) {
             return;
@@ -47,18 +68,85 @@ export function CommonHandle({
           showModal();
         }}
       >
-        <Plus className="size-3 pointer-events-none text-text-title-invert" />
+        <Plus className="size-3 pointer-events-none text-white hidden group-hover:inline-block" />
         {visible && (
-          <InnerNextStepDropdown
+          <NextStepDropdown
+            nodeId={nodeId}
             hideModal={() => {
               hideModal();
               clearActiveDropdown();
             }}
           >
             <span></span>
-          </InnerNextStepDropdown>
+          </NextStepDropdown>
         )}
       </Handle>
     </HandleContext.Provider>
+  );
+}
+
+export function LeftEndHandle({
+  isConnectable,
+  className,
+  ...props
+}: Omit<HandleProps, 'type' | 'position'>) {
+  return (
+    <Handle
+      isConnectable={isConnectable}
+      className={cn('!bg-accent-primary !size-2', className)}
+      id={NodeHandleId.End}
+      type="target"
+      position={Position.Left}
+      {...props}
+    ></Handle>
+  );
+}
+
+export function BottomHandle({
+  id,
+  left,
+  visible,
+  nodeId,
+}: {
+  id: NodeHandleId;
+  left: number;
+  visible: boolean;
+  nodeId: string;
+}) {
+  const toggleBottomCollapse = useGraphStore(
+    (state) => state.toggleBottomCollapse,
+  );
+  const collapsed = useGraphStore(
+    (state) => state.collapsedBottomHandles[nodeId]?.includes(id) ?? false,
+  );
+
+  const handleClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    toggleBottomCollapse(nodeId, id);
+  };
+
+  return (
+    <Handle
+      type="source"
+      position={Position.Bottom}
+      isConnectable={false}
+      // With pointer events re-enabled above, keep pointerdown on the handle
+      // from starting a connection drag
+      isConnectableStart={false}
+      id={id}
+      style={{ left }}
+      onClick={handleClick}
+      className={cn(
+        '!size-3.5 !bg-text-disabled !border-border-button inline-flex items-center justify-center invisible !pointer-events-auto cursor-pointer',
+        { visible },
+      )}
+    >
+      <ChevronDown
+        className={cn(
+          'size-2.5 text-bg-base pointer-events-none transition-transform',
+          { '-rotate-90': collapsed },
+        )}
+      />
+    </Handle>
   );
 }

@@ -1,12 +1,31 @@
+/*
+ *  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 import { FormLayout } from '@/constants/form';
-import { DocumentParserType } from '@/constants/knowledge';
+import { DocumentParserType, GenerateType } from '@/constants/knowledge';
 import { useTranslate } from '@/hooks/common-hooks';
 import random from 'lodash/random';
-import { Plus } from 'lucide-react';
-import { useCallback } from 'react';
+import { Shuffle } from 'lucide-react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
+import {
+  GenerateLogButton,
+  IGenerateLogButtonProps,
+} from '../generate-log-button';
 import { SliderInputFormField } from '../slider-input-form-field';
-import { Button } from '../ui/button';
 import {
   FormControl,
   FormField,
@@ -14,8 +33,8 @@ import {
   FormLabel,
   FormMessage,
 } from '../ui/form';
-import { Input } from '../ui/input';
-import { Switch } from '../ui/switch';
+import { ExpandedInput } from '../ui/input';
+import { Radio } from '../ui/radio';
 import { Textarea } from '../ui/textarea';
 
 export const excludedParseMethods = [
@@ -46,45 +65,65 @@ export const showTagItems = (parserId: DocumentParserType) => {
 
 const UseRaptorField = 'parser_config.raptor.use_raptor';
 const RandomSeedField = 'parser_config.raptor.random_seed';
-const MaxTokenField = 'parser_config.raptor.max_token';
-const ThresholdField = 'parser_config.raptor.threshold';
-const MaxCluster = 'parser_config.raptor.max_cluster';
-const Prompt = 'parser_config.raptor.prompt';
+const ClusteringMethodField = 'parser_config.raptor.clustering_method';
+const ClusteringMethodExtField = 'parser_config.raptor.ext.clustering_method';
+const TreeBuilderField = 'parser_config.raptor.tree_builder';
+const MaxClusterMax = 1024;
 
 // The three types "table", "resume" and "one" do not display this configuration.
 
-const RaptorFormFields = () => {
+const RaptorFormFields = ({
+  data,
+  onDelete,
+}: {
+  data: IGenerateLogButtonProps;
+  onDelete: () => void;
+}) => {
   const form = useFormContext();
   const { t } = useTranslate('knowledgeConfiguration');
   const useRaptor = useWatch({ name: UseRaptorField });
-
-  const changeRaptor = useCallback(
-    (isUseRaptor: boolean) => {
-      if (isUseRaptor) {
-        form.setValue(MaxTokenField, 256);
-        form.setValue(ThresholdField, 0.1);
-        form.setValue(MaxCluster, 64);
-        form.setValue(RandomSeedField, 0);
-        form.setValue(Prompt, t('promptText'));
-      }
-    },
-    [form],
+  const clusteringMethod = useWatch({ name: ClusteringMethodField });
+  const extClusteringMethod = useWatch({ name: ClusteringMethodExtField });
+  const selectedClusteringMethod = useMemo(
+    () =>
+      (clusteringMethod ??
+        extClusteringMethod ??
+        form.getValues(ClusteringMethodField) ??
+        form.getValues(ClusteringMethodExtField) ??
+        'gmm') as 'gmm' | 'ahc',
+    [clusteringMethod, extClusteringMethod, form],
   );
 
   const handleGenerate = useCallback(() => {
     form.setValue(RandomSeedField, random(10000));
   }, [form]);
 
+  const handleClusteringMethodChange = useCallback(
+    (method: 'gmm' | 'ahc') => {
+      form.setValue(ClusteringMethodField, method, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      form.setValue(TreeBuilderField, 'raptor', {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [form],
+  );
+
+  useEffect(() => {
+    if (!clusteringMethod && !extClusteringMethod) {
+      handleClusteringMethodChange('gmm');
+    }
+  }, [clusteringMethod, extClusteringMethod, handleClusteringMethodChange]);
+
   return (
     <>
       <FormField
         control={form.control}
         name={UseRaptorField}
-        render={({ field }) => {
-          // if (typeof field.value === 'undefined') {
-          //   // default value set
-          //   form.setValue('parser_config.raptor.use_raptor', false);
-          // }
+        render={() => {
           return (
             <FormItem
               defaultChecked={false}
@@ -93,19 +132,61 @@ const RaptorFormFields = () => {
               <div className="flex items-center gap-1">
                 <FormLabel
                   tooltip={t('useRaptorTip')}
-                  className="text-sm text-muted-foreground w-1/4 whitespace-break-spaces"
+                  className="text-sm  w-1/4 whitespace-break-spaces"
                 >
                   {t('useRaptor')}
                 </FormLabel>
                 <div className="w-3/4">
                   <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={(e) => {
-                        changeRaptor(e);
-                        field.onChange(e);
-                      }}
-                    ></Switch>
+                    <GenerateLogButton
+                      {...data}
+                      onDelete={onDelete}
+                      className="w-full text-text-secondary"
+                      status={1}
+                      type={GenerateType.Raptor}
+                    />
+                  </FormControl>
+                </div>
+              </div>
+              <div className="flex pt-1">
+                <div className="w-1/4"></div>
+                <FormMessage />
+              </div>
+            </FormItem>
+          );
+        }}
+      />
+      <FormField
+        control={form.control}
+        name={'parser_config.raptor.scope'}
+        render={({ field }) => {
+          return (
+            <FormItem className=" items-center space-y-0 ">
+              <div className="flex items-start">
+                <FormLabel
+                  tooltip={t('generationScopeTip')}
+                  className="text-sm  whitespace-nowrap w-1/4"
+                >
+                  {t('generationScope')}
+                </FormLabel>
+                <div className="w-3/4">
+                  <FormControl>
+                    <Radio.Group {...field} disabled={!!data?.finish_at}>
+                      <div className={'flex gap-4 w-full text-text-secondary '}>
+                        <Radio
+                          value="dataset"
+                          testId="ds-settings-raptor-generation-scope-option-dataset"
+                        >
+                          {t('scopeDataset')}
+                        </Radio>
+                        <Radio
+                          value="file"
+                          testId="ds-settings-raptor-generation-scope-option-document"
+                        >
+                          {t('scopeSingleFile')}
+                        </Radio>
+                      </div>
+                    </Radio.Group>
                   </FormControl>
                 </div>
               </div>
@@ -128,7 +209,7 @@ const RaptorFormFields = () => {
                   <div className="flex items-start">
                     <FormLabel
                       tooltip={t('promptTip')}
-                      className="text-sm text-muted-foreground whitespace-nowrap w-1/4"
+                      className="text-sm  whitespace-nowrap w-1/4"
                     >
                       {t('prompt')}
                     </FormLabel>
@@ -140,6 +221,7 @@ const RaptorFormFields = () => {
                           onChange={(e) => {
                             field.onChange(e?.target?.value);
                           }}
+                          data-testid="ds-settings-raptor-prompt-textarea"
                         />
                       </FormControl>
                     </div>
@@ -159,6 +241,8 @@ const RaptorFormFields = () => {
             max={2048}
             min={0}
             layout={FormLayout.Horizontal}
+            sliderTestId="ds-settings-raptor-max-token-slider"
+            numberInputTestId="ds-settings-raptor-max-token-input"
           ></SliderInputFormField>
           <SliderInputFormField
             name={'parser_config.raptor.threshold'}
@@ -168,14 +252,68 @@ const RaptorFormFields = () => {
             max={1}
             min={0}
             layout={FormLayout.Horizontal}
+            sliderTestId="ds-settings-raptor-threshold-slider"
+            numberInputTestId="ds-settings-raptor-threshold-input"
           ></SliderInputFormField>
+          <FormField
+            control={form.control}
+            name={ClusteringMethodField}
+            render={({ field }) => {
+              return (
+                <FormItem className=" items-center space-y-0 ">
+                  <div className="flex items-start">
+                    <FormLabel
+                      tooltip={t('clusteringMethodTip')}
+                      className="text-sm  whitespace-nowrap w-1/4"
+                    >
+                      {t('clusteringMethod')}
+                    </FormLabel>
+                    <div className="w-3/4">
+                      <FormControl>
+                        <Radio.Group
+                          {...field}
+                          value={selectedClusteringMethod}
+                          onChange={(value) =>
+                            handleClusteringMethodChange(value as 'gmm' | 'ahc')
+                          }
+                        >
+                          <div
+                            className={'flex gap-4 w-full text-text-secondary '}
+                          >
+                            <Radio
+                              value="gmm"
+                              testId="ds-settings-raptor-clustering-method-option-gmm"
+                            >
+                              {t('clusteringMethodGmm')}
+                            </Radio>
+                            <Radio
+                              value="ahc"
+                              testId="ds-settings-raptor-clustering-method-option-ahc"
+                            >
+                              {t('clusteringMethodAhc')}
+                            </Radio>
+                          </div>
+                        </Radio.Group>
+                      </FormControl>
+                    </div>
+                  </div>
+                  <div className="flex pt-1">
+                    <div className="w-1/4"></div>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              );
+            }}
+          />
           <SliderInputFormField
             name={'parser_config.raptor.max_cluster'}
             label={t('maxCluster')}
             tooltip={t('maxClusterTip')}
-            max={1024}
+            max={MaxClusterMax}
             min={1}
             layout={FormLayout.Horizontal}
+            sliderTestId="ds-settings-raptor-max-cluster-slider"
+            numberInputTestId="ds-settings-raptor-max-cluster-input"
           ></SliderInputFormField>
           <FormField
             control={form.control}
@@ -183,21 +321,30 @@ const RaptorFormFields = () => {
             render={({ field }) => (
               <FormItem className=" items-center space-y-0 ">
                 <div className="flex items-center">
-                  <FormLabel className="text-sm text-muted-foreground whitespace-wrap w-1/4">
+                  <FormLabel
+                    className="text-sm  whitespace-wrap w-1/4"
+                    tooltip={t('randomSeedTip')}
+                  >
                     {t('randomSeed')}
                   </FormLabel>
                   <div className="w-3/4">
                     <FormControl defaultValue={0}>
-                      <div className="flex gap-4 items-center">
-                        <Input {...field} defaultValue={0} type="number" />
-                        <Button
-                          size={'sm'}
-                          onClick={handleGenerate}
-                          type={'button'}
-                        >
-                          <Plus />
-                        </Button>
-                      </div>
+                      <ExpandedInput
+                        {...field}
+                        className="w-full"
+                        defaultValue={0}
+                        type="number"
+                        data-testid="ds-settings-raptor-seed-input"
+                        suffix={
+                          <div className="w-7 flex justify-center items-center">
+                            <Shuffle
+                              className="size-3.5 cursor-pointer"
+                              onClick={handleGenerate}
+                              data-testid="ds-settings-raptor-seed-randomize-btn"
+                            />
+                          </div>
+                        }
+                      />
                     </FormControl>
                   </div>
                 </div>

@@ -15,21 +15,34 @@ import {
   LexicalNode,
 } from 'lexical';
 
+import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { JsonSchemaDataType } from '@/pages/agent/constant';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { Variable } from 'lucide-react';
-import { ReactNode, useCallback, useState } from 'react';
+import {
+  forwardRef,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
+import { EnterKeyPlugin } from './enter-key-plugin';
 import { PasteHandlerPlugin } from './paste-handler-plugin';
 import theme from './theme';
 import { VariableNode } from './variable-node';
 import { VariableOnChangePlugin } from './variable-on-change-plugin';
-import VariablePickerMenuPlugin from './variable-picker-plugin';
+import VariablePickerMenuPlugin, {
+  VariablePickerMenuPluginProps,
+} from './variable-picker-plugin';
 
 // Catch any errors that occur during Lexical updates and log them
 // or throw them as needed. If you don't throw them, Lexical will
@@ -46,17 +59,34 @@ const Nodes: Array<Klass<LexicalNode>> = [
   VariableNode,
 ];
 
-type PromptContentProps = { showToolbar?: boolean; multiLine?: boolean };
+type PromptContentProps = {
+  enablePathQueryAutoMerge: boolean;
+  showToolbar?: boolean;
+  showMergePath?: boolean;
+  multiLine?: boolean;
+  onBlur?: () => void;
+  onEnablePathQueryAutoMergeChange: (checked: boolean) => void;
+};
 
 type IProps = {
+  enablePathQueryAutoMerge?: boolean;
+  showToolbar?: boolean;
+  showMergePath?: boolean;
+  multiLine?: boolean;
   value?: string;
   onChange?: (value?: string) => void;
+  onBlur?: () => void;
   placeholder?: ReactNode;
-} & PromptContentProps;
+  types?: JsonSchemaDataType[];
+} & Pick<VariablePickerMenuPluginProps, 'extraOptions' | 'baseOptions'>;
 
 function PromptContent({
+  enablePathQueryAutoMerge,
   showToolbar = true,
+  showMergePath = true,
   multiLine = true,
+  onBlur,
+  onEnablePathQueryAutoMergeChange,
 }: PromptContentProps) {
   const [editor] = useLexicalComposerContext();
   const [isBlur, setIsBlur] = useState(false);
@@ -78,7 +108,8 @@ function PromptContent({
 
   const handleBlur = useCallback(() => {
     setIsBlur(true);
-  }, []);
+    onBlur?.();
+  }, [onBlur]);
 
   const handleFocus = useCallback(() => {
     setIsBlur(false);
@@ -86,10 +117,10 @@ function PromptContent({
 
   return (
     <section
-      className={cn('border rounded-sm ', { 'border-blue-400': !isBlur })}
+      className={cn('border rounded-sm ', { 'border-accent-primary': !isBlur })}
     >
       {showToolbar && (
-        <div className="border-b px-2 py-2 justify-end flex">
+        <div className="border-b px-2 py-2 justify-end flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-block cursor-pointer cursor p-0.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-sm">
@@ -100,45 +131,105 @@ function PromptContent({
               <p>{t('flow.insertVariableTip')}</p>
             </TooltipContent>
           </Tooltip>
+          {showMergePath && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="flex cursor-pointer items-center rounded-sm border border-border bg-bg-base/95 px-1 py-0.5 shadow-sm backdrop-blur-sm">
+                  <span className="sr-only">{t('flow.mergePath')}</span>
+                  <div className="origin-right scale-75">
+                    <Switch
+                      checked={enablePathQueryAutoMerge}
+                      onCheckedChange={onEnablePathQueryAutoMergeChange}
+                      aria-label={t('flow.mergePath')}
+                    />
+                  </div>
+                </label>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('flow.mergePath')}</p>
+                <p>{t('flow.mergePathTip')}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       )}
-      <ContentEditable
-        className={cn(
-          'relative px-2 py-1 focus-visible:outline-none max-h-[50vh] overflow-auto',
-          {
-            'min-h-40': multiLine,
-          },
+      <div className="relative">
+        {!showToolbar && showMergePath && (
+          <div className="absolute inset-y-0 right-2 z-10 flex items-center">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="flex cursor-pointer items-center rounded-sm px-1 py-0.5 shadow-sm backdrop-blur-sm">
+                  <span className="sr-only">{t('flow.mergePath')}</span>
+                  <div className="origin-right scale-75">
+                    <Switch
+                      checked={enablePathQueryAutoMerge}
+                      onCheckedChange={onEnablePathQueryAutoMergeChange}
+                      aria-label={t('flow.mergePath')}
+                    />
+                  </div>
+                </label>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('flow.mergePath')}</p>
+                <p>{t('flow.mergePathTip')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         )}
-        onBlur={handleBlur}
-        onFocus={handleFocus}
-      />
+        <ContentEditable
+          className={cn(
+            'relative px-2 py-1 focus-visible:outline-none max-h-[50vh] overflow-auto text-sm',
+            {
+              'pr-14': !showToolbar && showMergePath,
+              'min-h-40': multiLine,
+            },
+          )}
+          onBlur={handleBlur}
+          onFocus={handleFocus}
+        />
+      </div>
     </section>
   );
 }
 
-export function PromptEditor({
-  value,
-  onChange,
-  placeholder,
-  showToolbar,
-  multiLine = true,
-}: IProps) {
+export const PromptEditor = forwardRef(function PromptEditor(
+  {
+    value,
+    onChange,
+    onBlur,
+    placeholder,
+    showToolbar = true,
+    showMergePath = true,
+    multiLine = true,
+    enablePathQueryAutoMerge = true,
+    extraOptions,
+    baseOptions,
+    types,
+  }: IProps,
+  ref: React.Ref<HTMLDivElement>,
+) {
   const { t } = useTranslation();
-  const initialConfig: InitialConfigType = {
-    namespace: 'PromptEditor',
-    theme,
-    onError,
-    nodes: Nodes,
-  };
+  const id = useId();
+  const [isPathQueryAutoMergeEnabled, setIsPathQueryAutoMergeEnabled] =
+    useState(enablePathQueryAutoMerge);
+  const initialConfig: InitialConfigType = useMemo(
+    () => ({
+      namespace: `PromptEditor-${id}`,
+      theme,
+      onError,
+      nodes: Nodes,
+    }),
+    [id],
+  );
+
+  useEffect(() => {
+    setIsPathQueryAutoMergeEnabled(enablePathQueryAutoMerge);
+  }, [enablePathQueryAutoMerge]);
 
   const onValueChange = useCallback(
     (editorState: EditorState) => {
       editorState?.read(() => {
-        // const listNodes = $nodesOfType(VariableNode); // to be removed
-        // const allNodes = $dfs();
-
         const text = $getRoot().getTextContent();
-
         onChange?.(text);
       });
     },
@@ -146,22 +237,26 @@ export function PromptEditor({
   );
 
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <LexicalComposer initialConfig={initialConfig}>
         <RichTextPlugin
           contentEditable={
             <PromptContent
+              enablePathQueryAutoMerge={isPathQueryAutoMergeEnabled}
               showToolbar={showToolbar}
+              showMergePath={showMergePath}
               multiLine={multiLine}
+              onBlur={onBlur}
+              onEnablePathQueryAutoMergeChange={setIsPathQueryAutoMergeEnabled}
             ></PromptContent>
           }
           placeholder={
             <div
               className={cn(
-                'absolute top-1 left-2 text-text-secondary pointer-events-none',
+                '-z-10 absolute top-1 left-2 text-text-disabled pointer-events-none',
                 {
-                  'truncate w-[90%]': !multiLine,
-                  'translate-y-10': multiLine,
+                  'truncate max-w-[calc(100%-4rem)]': !multiLine,
+                  'top-12': showToolbar,
                 },
               )}
             >
@@ -170,12 +265,19 @@ export function PromptEditor({
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
-        <VariablePickerMenuPlugin value={value}></VariablePickerMenuPlugin>
+        <VariablePickerMenuPlugin
+          value={value}
+          extraOptions={extraOptions}
+          baseOptions={baseOptions}
+          types={types}
+        ></VariablePickerMenuPlugin>
         <PasteHandlerPlugin />
+        <EnterKeyPlugin />
         <VariableOnChangePlugin
+          enablePathQueryAutoMerge={isPathQueryAutoMergeEnabled}
           onChange={onValueChange}
         ></VariableOnChangePlugin>
       </LexicalComposer>
     </div>
   );
-}
+});

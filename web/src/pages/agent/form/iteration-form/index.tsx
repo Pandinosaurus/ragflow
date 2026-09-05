@@ -1,10 +1,12 @@
-import { FormContainer } from '@/components/form-container';
+import { SliderInputFormField } from '@/components/slider-input-form-field';
 import { Form } from '@/components/ui/form';
+import { FormLayout } from '@/constants/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { memo, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
-import { VariableType } from '../../constant';
+import { ArrayFields } from '../../constant';
 import { INextOperatorForm } from '../../interface';
 import { FormWrapper } from '../components/form-wrapper';
 import { Output } from '../components/output';
@@ -16,11 +18,21 @@ import { useWatchFormChange } from './use-watch-form-change';
 
 const FormSchema = z.object({
   query: z.string().optional(),
+  variables: z.array(
+    z.object({
+      variable: z.string().optional(),
+      operator: z.string().optional(),
+      parameter: z.string().or(z.number()).or(z.boolean()).optional(),
+      mode: z.string(),
+    }),
+  ),
+  max_concurrency: z.coerce.number().int().min(0),
   outputs: z.array(z.object({ name: z.string(), value: z.any() })).optional(),
 });
 
 function IterationForm({ node }: INextOperatorForm) {
   const defaultValues = useValues(node);
+  const { t } = useTranslation();
 
   const form = useForm({
     defaultValues: defaultValues,
@@ -41,12 +53,19 @@ function IterationForm({ node }: INextOperatorForm) {
   return (
     <Form {...form}>
       <FormWrapper>
-        <FormContainer>
-          <QueryVariable
-            name="items_ref"
-            type={VariableType.Array}
-          ></QueryVariable>
-        </FormContainer>
+        <QueryVariable
+          name="items_ref"
+          types={ArrayFields as any[]}
+        ></QueryVariable>
+        <SliderInputFormField
+          min={0}
+          max={32}
+          name="max_concurrency"
+          label={t('flow.maxConcurrency')}
+          tooltip={t('flow.maxConcurrencyTip')}
+          layout={FormLayout.Vertical}
+          integer
+        ></SliderInputFormField>
         <DynamicOutput node={node}></DynamicOutput>
         <Output list={outputList}></Output>
       </FormWrapper>
